@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  package="eu.limenia.limenia_device">
+  <!-- isSupported() looks whether the Google Play Store is installed (package visibility, Android 11+). -->
+  <queries>
+    <package android:name="com.android.vending" />
+  </queries>
+</manifest>

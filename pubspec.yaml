@@ -1,0 +1,30 @@
+name: limenia_device
+description: >-
+  Flutter plugin for the device connector of Limenia: gets a token of the device
+  from Play Integrity (Android) or DeviceCheck (iOS) for the app to send to its
+  own backend.
+version: 0.1.0
+publish_to: none
+repository: https://github.com/DL3KB/limenia-flutter
+
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: eu.limenia.limenia_device
+        pluginClass: LimeniaDevicePlugin
+      ios:
+        pluginClass: LimeniaDevicePlugin
