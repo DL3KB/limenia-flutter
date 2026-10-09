@@ -3,12 +3,12 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'limenia_device'
-  s.version          = '0.1.0'
+  s.version          = '0.1.1'
   s.summary          = 'Device tokens for the device connector of Limenia.'
   s.description      = <<-DESC
 DeviceCheck tokens for the device connector of Limenia (Play Integrity on Android).
                        DESC
-  s.homepage         = 'https://github.com/DL3KB/limenia-flutter'
+  s.homepage         = 'https://github.com/DL3KB/limenia-flutter/tree/main/packages/limenia_device'
   s.license          = { :type => 'Apache-2.0', :file => '../LICENSE' }
   s.author           = { 'Limenia' => 'https://github.com/DL3KB' }
   s.source           = { :path => '.' }

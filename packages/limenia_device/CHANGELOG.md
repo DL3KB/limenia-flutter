@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 (2026-10-09)
+
+First release on pub.dev: install with `limenia_device: ^0.1.1`. No change to the code or the native parts.
+
+- The plugin moved to the folder `packages/limenia_device` of the repo `DL3KB/limenia-flutter`, next to the package `limenia`. A git dependency now needs `path: packages/limenia_device`; the tag `v0.1.0` keeps the old layout.
+- `pubspec.yaml` has the metadata for pub.dev (homepage, repository, issue tracker, documentation, topics) and the package folder has its own `LICENSE`.
+
 ## 0.1.0 (2026-10-05)
 
 First public version, for the device connector of Limenia (API version 0.20.0).

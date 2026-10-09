@@ -7,17 +7,16 @@ Flutter plugin for the device connector of Limenia, the moderation service for a
 
 Your backend forwards the token to `POST /v1/devices/check`. Limenia reads the few bits Google and Apple keep per device, which survive a reinstall and a factory reset. It marks the device of a banned or suspended user and tells you when an account is used on a marked device. A marked device is a hint, never proof: devices are sold on, and Apple forbids using the bits as the only evidence. Your app decides what follows, e.g. more verification at registration.
 
-The plugin does nothing else. It does not talk to Limenia and depends neither on the Dart package `limenia` nor on any package besides Flutter.
+The plugin does nothing else. It does not talk to Limenia and depends neither on the package [`limenia`](https://pub.dev/packages/limenia) nor on any package besides Flutter.
 
 ## Installation
 
 ```yaml
 dependencies:
-  limenia_device:
-    git:
-      url: https://github.com/DL3KB/limenia-flutter.git
-      ref: v0.1.0
+  limenia_device: ^0.1.1
 ```
+
+The plugin is optional: add it only if your app uses the device connector. Reports, complaints, reviews, signals and the widgets come from the package [`limenia`](https://pub.dev/packages/limenia), which the plugin does not need. Both live in the repo [DL3KB/limenia-flutter](https://github.com/DL3KB/limenia-flutter), this one in `packages/limenia_device`.
 
 Requirements: Android `minSdk` 24 (Play Integrity needs 23) and a device with Google Play; iOS 15. It works with CocoaPods and Swift Package Manager. Developed and tested with Flutter 3.47; the Dart code needs Dart 3.5, and the native code was not built with older versions of Flutter.
 
@@ -36,7 +35,7 @@ App                                   Your backend                         Limen
  | <------------------ your decision   | <------------ DeviceCheckResult --- |
 ```
 
-1. The backend picks a random nonce for the signed-in user and computes the request hash with `deviceRequestHash(externalUserId, nonce)`: `base64url(SHA-256("limenia:" + externalUserId + ":" + nonce))` without padding (the Dart client of Limenia has it as `deviceRequestHash`). It remembers the hash for a few minutes and returns it.
+1. The backend picks a random nonce for the signed-in user and computes the request hash with `deviceRequestHash(externalUserId, nonce)`: `base64url(SHA-256("limenia:" + externalUserId + ":" + nonce))` without padding (the package `limenia` has it as `deviceRequestHash`). It remembers the hash for a few minutes and returns it.
 2. The app requests the token with this hash.
 3. The app sends `platform`, `token` and the hash to the backend.
 4. The backend takes the user from its own login, checks that it issued this hash to this user and drops it (single use), and forwards everything to `POST /v1/devices/check`. On Android Limenia checks that the token was requested with exactly this hash, for the package of the app and at most 15 minutes ago. That binds the token to the user and to this check: a token of another device cannot be passed off.
@@ -128,6 +127,8 @@ Only accept test tokens from debug builds or test accounts in your backend, and 
 - `LimeniaDeviceException`: `code` (`LimeniaDeviceException.unsupported`, `invalidArgument` or `failed`), `message` and `nativeCode`.
 
 ## Development
+
+In `packages/limenia_device` of the repo:
 
 ```sh
 flutter pub get
