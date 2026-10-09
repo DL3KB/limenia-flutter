@@ -1,0 +1,3 @@
+tags:
+  # Sends requests to a real Limenia deployment, needs LIMENIA_BASE_URL and LIMENIA_API_KEY.
+  integration: {}

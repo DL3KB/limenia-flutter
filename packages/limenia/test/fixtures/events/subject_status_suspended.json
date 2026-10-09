@@ -1,0 +1,1 @@
+{"id":"evt_01K6G5H1TR8W4QZ3M0XCB7NEVT","type":"subject.status_changed","createdAt":"2026-10-01T10:00:00.123456Z","app":{"id":"01K6G5H1TR8W4QZ3M0XCB7NAPP","slug":"photoapp"},"subject":{"externalUserId":"u_112","status":"suspended","suspendedUntil":"2026-10-08T08:00:00Z"}}

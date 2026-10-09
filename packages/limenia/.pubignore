@@ -1,0 +1,10 @@
+# Files that pub leaves out of the published package limenia. Pub uses this
+# file instead of .gitignore for this folder, so it repeats those rules.
+.DS_Store
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+/tool/
+doc/api/

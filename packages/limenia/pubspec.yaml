@@ -1,0 +1,32 @@
+name: limenia
+description: >-
+  Flutter package for apps that use the Limenia moderation service: send
+  reports, complaints and reviews reliably, read decisions, plus ready-made
+  widgets.
+version: 0.12.0
+homepage: https://limenia.eu
+repository: https://github.com/DL3KB/limenia-flutter/tree/main/packages/limenia
+issue_tracker: https://github.com/DL3KB/limenia-flutter/issues
+documentation: https://limenia.eu/docs/integration.md
+topics:
+  - moderation
+  - content-moderation
+  - trust-and-safety
+  - dsa
+  - reporting
+
+environment:
+  sdk: ^3.5.0
+  # RadioGroup, which the report sheet uses for its categories, came with 3.35.
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^6.1.0
+  test: ^1.25.0
+  yaml: ^3.1.4

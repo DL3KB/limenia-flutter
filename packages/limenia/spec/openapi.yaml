@@ -1,0 +1,1585 @@
+# Limenia public API: the /v1 operations for app backends and the webhook events.
+# Generated from the API specification of Limenia. Guide: https://limenia.eu/docs/integration.md
+openapi: 3.0.3
+info:
+  title: Limenia API
+  version: 0.25.0
+  description: |
+    Public API of Limenia for app backends (`/v1`) and the webhook events Limenia sends to apps.
+    Integration guide for developers and coding agents: https://limenia.eu/docs/integration.md
+
+    - Base URL: https://app.limenia.eu; every path starts with `/v1`.
+    - Authentication: `Authorization: Bearer <API key>` (`lm_live_...` or `lm_test_...`). The key determines tenant and app.
+      It belongs in the app backend only, never in a mobile or web app.
+    - Errors: `application/problem+json` (RFC 9457) with the additional member `code`; field errors in `errors`
+      (`field` is a JSON pointer or a header name).
+    - Rate limit: 10 requests per second per API key, burst 50, for all `/v1` operations. 429 `rate_limited` carries `Retry-After` in seconds.
+    - `POST /v1/reports`, `POST /v1/appeals`, `POST /v1/reviews` and `POST /v1/signals` require the header `Idempotency-Key` (1 to 200 characters).
+      Same key and same body: the original response. Same key, different body: 409 `idempotency_key_reused`. Keys are kept for at least 24 hours.
+    - Reports, complaints and the user operations are never blocked by the plan of the tenant. Review requests, signals and device checks
+      answer 402 `subscription_required` or 403 `feature_not_in_plan` if the plan does not cover them.
+    - Webhook events: see `x-webhooks` and the schema `WebhookEvent`. Limenia POSTs JSON to the webhook URL of the app with the headers
+      `Limenia-Event-Id`, `Limenia-Event-Type` and `Limenia-Signature: t=<unix seconds>,v1=<hex>`, where
+      `v1 = hex(HMAC-SHA256(secret, t + "." + raw body))`. Verify it over the raw body in constant time and reject a `t`
+      more than 300 seconds away from your clock. Answer 2xx within 10 seconds; anything else is retried (12 attempts over about 20 hours).
+servers:
+  - url: https://app.limenia.eu
+security:
+  - apiKey: []
+tags:
+  - name: appeals
+    description: Complaints against decisions (Art. 20 DSA)
+  - name: reviews
+    description: Review of content before publication (pre-moderation)
+  - name: ingest
+    description: API for app backends, authenticated with the API key of an app
+  - name: integrations
+    description: Events from services of the tenant (RevenueCat), not called by the app backend
+  - name: signals
+    description: Signals of apps about users; rules of the tenant turn them into cases, priorities or flags
+  - name: devices
+    description: Device connector with Play Integrity and DeviceCheck
+paths:
+  /v1/ping:
+    get:
+      operationId: ingestPing
+      tags: [ingest]
+      summary: Check an API key
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: The key is valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ping"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/reports:
+    post:
+      operationId: ingestCreateReport
+      tags: [ingest]
+      summary: Report content or a user
+      description: |
+        Creates a report with a snapshot of the content and the reported user.
+        Reports on the same content (or, without content, on the same user) are
+        bundled into one open case. Media are copied asynchronously.
+
+        Requires the header `Idempotency-Key`: a repeated request with the same
+        key returns the original response; the same key with a different body
+        is rejected (`idempotency_key_reused`). Keys are kept for 24 hours.
+        Tenants in onboarding or suspended tenants reject reports
+        (`tenant_not_active`). Never blocked by the plan or the subscription
+        state of the tenant (Art. 16 DSA).
+
+        Misuse of the notice procedure (Art. 23 DSA): while a
+        moderator has warned the reporter, the response carries
+        `reporterWarning`; show the warning to the reporter. While the
+        processing of the reporter's notices is suspended, Limenia answers 403
+        `reporter_suspended` with `suspendedUntil` and stores nothing (no
+        idempotency record either).
+      security:
+        - apiKey: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportRequest"
+      responses:
+        "201":
+          description: Report created (or the original response of a repeated request)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/subjects/{externalUserId}:
+    parameters:
+      - $ref: "#/components/parameters/ExternalUserId"
+    put:
+      operationId: ingestUpdateSubject
+      tags: [ingest]
+      summary: Update the display name of a user
+      description: |
+        Sets the display name of a user (created as `active` if unknown) and
+        returns the current sanction status exactly like
+        `GET /v1/subjects/{externalUserId}/status`: a temporary suspension
+        whose `suspendUntil` has passed counts as `active` even before the
+        hourly job lifts it. Never blocked by the plan or the subscription
+        state of the tenant.
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSubjectRequest"
+      responses:
+        "200":
+          description: Current status of the user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubjectStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/subjects/{externalUserId}/status:
+    parameters:
+      - $ref: "#/components/parameters/ExternalUserId"
+    get:
+      operationId: ingestGetSubjectStatus
+      tags: [ingest]
+      summary: Current sanction status of a user
+      description: |
+        Fallback in case a webhook was lost. Unknown users are reported as
+        `active`, and so is a temporary suspension whose `suspendUntil` has
+        passed, even before the hourly job lifts it. Never blocked by the
+        plan or the subscription state of the tenant.
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: Current status of the user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubjectStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/integrations/revenuecat/{tenantId}/{appId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AppId"
+    post:
+      operationId: receiveRevenueCatWebhook
+      tags: [integrations]
+      summary: Receive an event from RevenueCat
+      description: |
+        Called by RevenueCat for the project the app is connected to. No session cookie, no CSRF token, no origin check and
+        no API key. Checked in this order:
+        1. Tenant and app exist and the app has a webhook for RevenueCat
+           events,
+           otherwise 404.
+        2. The header `Authorization` carries the value Limenia created for
+           the app, with or without the scheme `Bearer `. Limenia compares the
+           SHA-256 hash of the token with the stored one in constant time,
+           otherwise 401.
+        3. While a signing secret is set, the header
+           `X-RevenueCat-Webhook-Signature: t=<unix>,v1=<hex>` carries
+           hex(hmac_sha256(secret, t + "." + body)) over the unchanged body
+           (any `v1` may match), with `t` at most 5 minutes away from now,
+           otherwise 401. Without a signing secret the header is not checked.
+        4. The body is an event, otherwise 400. A body larger than 1 MiB is
+           answered with 400 right after step 2, since its signature cannot
+           be checked.
+
+        Only requests that pass step 2 change the status of the webhook
+        (`RevenueCatConnector.webhook`): an accepted event sets `lastEventAt`
+        (at most once a minute) and clears `lastError`, a failure in step 3
+        or 4 sets `lastError`. A wrong Authorization header leaves no trace
+        in Limenia; RevenueCat shows the failed calls in its own log.
+
+        The body is the event as RevenueCat sends it,
+        `{"api_version": "1.0", "event": {...}}`. Limenia reads only these
+        members of `event`: `id`, `type`, `environment`, `store`,
+        `app_user_id`, `original_app_user_id`, `transferred_from`,
+        `transferred_to` and `cancel_reason`. Everything else, in particular
+        `subscriber_attributes` (which can hold e.g. `$email`), prices and
+        transaction IDs, is ignored and never stored or logged. App User IDs
+        are never logged, and stored only as the external user ID of a user
+        file that a report creates.
+
+        Processing; every case below answers 200:
+        - **Ignored:** while the connector is switched off (`enabled:
+          false`), while the tenant is not active, events of the environment
+          `SANDBOX` unless `settings.sandboxEvents` is on, and every type
+          other than the two below. That includes `TEST`, which RevenueCat
+          sends from its dashboard: it only shows in `lastEventAt` that the
+          setup works.
+        - **Once:** Limenia keeps the ID of each event it acted on (a report
+          or a counted refund) for 30 days and ignores the event when it
+          comes again. An event that failed half-way (503) is completed by
+          the retry without a second report or count.
+        - **App User IDs:** Limenia looks up an App User ID as the external
+          user ID of a user file of this app (the external user ID must be
+          the App User ID, as for the actions of the connector). IDs of
+          anonymous customers (`$RCAnonymousID:…`), empty IDs and IDs longer
+          than 128 characters are skipped, and only the first 20 IDs of a
+          list count.
+        - **`TRANSFER`** (RevenueCat moved purchases from the App User IDs in
+          `transferred_from` to those in `transferred_to`, e.g. on a restore
+          with the restore behavior "Transfer to new App User ID"): a user of
+          `transferred_from` is a source if they are banned or suspended (a
+          suspension whose end has passed no longer counts) or their last ban
+          ended less than 90 days ago. If there is at least one source,
+          Limenia creates a report on each user of `transferred_to` that is
+          neither banned nor a source itself, and creates their user file if
+          it is missing: `source: system`, `reasonCategory: ban_evasion`,
+          without reporter, text or content, with
+          `context.revenuecat.transferredFrom` listing the user files of the
+          sources (never App User IDs), priority `high`. The report is
+          bundled like every report about a user without content: into the
+          open case (`open` or `in_review`) of that user without content in
+          this app, which then lists `ban_evasion` among its
+          `reasonCategories` and keeps the higher priority, otherwise into a
+          new case. So a user has at most one such open case, and further
+          transfers add reports to it. A moderator decides; Limenia never
+          restricts anyone on its own. These reports do not count as usage
+          (`MonthlyUsage.reports`) and, as system reports, are not part of
+          `reports.resolved`.
+        - **`CANCELLATION` with `cancel_reason` `CUSTOMER_SUPPORT`** (a
+          refund: by the support of a store, or through RevenueCat for Google
+          Play and Web Billing, which includes the refunds Limenia makes on a
+          ban, since the event does not tell who refunded): unless `store` is
+          `PROMOTIONAL`, Limenia counts it on the user file of this app whose
+          external user ID is `app_user_id`, or else `original_app_user_id`,
+          if there is one: `Subject.refunds` goes up by one and
+          `Subject.lastRefundAt` is set. The count changes neither status
+          nor retention of the user, and no user file is created for it.
+
+        RevenueCat expects 200 within 60 seconds and retries every other
+        answer up to five times, after 5, 10, 20, 40 and 80 minutes. Not
+        blocked by the plan or the subscription state.
+      security:
+        - revenuecatWebhook: []
+      parameters:
+        - name: X-RevenueCat-Webhook-Signature
+          in: header
+          required: false
+          description: 'HMAC signature of RevenueCat: `t=<unix>,v1=<hex>`. Checked only while a signing secret is set.'
+          schema:
+            type: string
+            maxLength: 2048
+      requestBody:
+        required: true
+        description: The event as sent by RevenueCat (`application/json`), checked byte for byte against the signature.
+        content:
+          "*/*":
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Event processed, already processed earlier, or ignored
+        "400":
+          description: |
+            The body is no event of RevenueCat (no JSON object, or without
+            `event.id` or `event.type`) or larger than 1 MiB (`bad_request`).
+            Checked only after the Authorization header and the signature
+            (a body larger than 1 MiB only after the Authorization header).
+            RevenueCat retries.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: |
+            Missing or wrong Authorization header, or, while a signing secret
+            is set, a missing, invalid or expired signature
+            (`unauthenticated`). RevenueCat retries.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: Unknown tenant or app, or the app has no webhook for RevenueCat events (`not_found`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: |
+            A temporary error, e.g. the signing secret cannot be read or the
+            database is unavailable (`unavailable`). RevenueCat retries; the
+            retry completes the event without acting twice.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/appeals:
+    post:
+      operationId: ingestCreateAppeal
+      tags: [ingest, appeals]
+      summary: Submit a complaint against a decision
+      description: |
+        Complaint of the affected user (`subject`) against a restricting decision,
+        or of a reporting user (`reporter`) against a decision on a case they
+        reported. Possible for six calendar months after the decision
+        (`appeal_window_closed`). At most one open complaint per decision and
+        person (`appeal_already_open`); other complaints are rejected with
+        `appeal_not_allowed`. Requires `Idempotency-Key` like
+        `POST /v1/reports`. Never blocked by the plan or the subscription
+        state of the tenant (Art. 20 DSA). A complaint of a
+        reporter whose notices are suspended (Art. 23 DSA) is answered with
+        403 `reporter_suspended`; complaints of the affected user are never
+        suspended.
+      security:
+        - apiKey: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAppealRequest"
+      responses:
+        "201":
+          description: Complaint received (or the original response of a repeated request)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedAppeal"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/appeals/{appealId}:
+    parameters:
+      - $ref: "#/components/parameters/AppealId"
+    get:
+      operationId: ingestGetAppeal
+      tags: [ingest, appeals]
+      summary: Status and result of a complaint
+      description: Fallback if the webhook `appeal.resolved` was missed.
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: Status of the complaint
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppealStatusInfo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/reviews:
+    post:
+      operationId: ingestCreateReview
+      tags: [ingest, reviews]
+      summary: Submit content for review before publication
+      description: |
+        Creates a review request of a review type of the app (400
+        `review_type_unknown` if the type does not exist or is inactive). The
+        content is snapshotted
+        like a report, media are copied asynchronously. Publish the content only
+        after `review.decided`. Requires `Idempotency-Key` like
+        `POST /v1/reports`. Requires the feature `reviews` (403
+        `feature_not_in_plan`) and a subscription state other than `expired`
+        (402 `subscription_required`).
+      security:
+        - apiKey: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReviewRequest"
+      responses:
+        "201":
+          description: Review request created (or the original response of a repeated request)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedReview"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/reviews/{reviewId}:
+    parameters:
+      - $ref: "#/components/parameters/ReviewId"
+    get:
+      operationId: ingestGetReview
+      tags: [ingest, reviews]
+      summary: Status and result of a review request
+      description: Fallback if the webhook `review.decided` was missed.
+      security:
+        - apiKey: []
+      responses:
+        "200":
+          description: Status of the review request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewStatusInfo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/signals:
+    post:
+      operationId: ingestCreateSignals
+      tags: [ingest, signals]
+      summary: Send signals about users
+      description: |
+        Observations of the app about users, e.g. score jumps or unusual
+        activity. Signals form no case: rules of the app turn them
+        into a case, a higher priority or a flag on the user file, evaluated
+        in the background after the answer. 1 to 100 signals per request,
+        all or nothing: one invalid signal rejects the request and nothing
+        is stored. Unknown or inactive types, and system types (only
+        Limenia creates those), answer 400 `signal_type_unknown` with field
+        errors. Requires `Idempotency-Key`
+        like `POST /v1/reports`; a request counts once against the rate
+        limit. Requires the feature `signals` (403 `feature_not_in_plan`)
+        and a subscription state other than `expired` (402
+        `subscription_required`); signals are no obligation under the DSA.
+      security:
+        - apiKey: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSignalsRequest"
+      responses:
+        "202":
+          description: Signals stored (or the original response of a repeated request)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedSignals"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Error"
+  /v1/devices/check:
+    post:
+      operationId: ingestCheckDevice
+      tags: [ingest, devices]
+      summary: Check the device of a user
+      description: |
+        Device connector. The app
+        gets a fresh token on the device (Play Integrity on Android,
+        DeviceCheck on iOS, or a test token `test:<device>` in test mode) and
+        its backend forwards it here with the user, best at registration and
+        at every login, also of a banned account before the app rejects it:
+        only then can Limenia mark the device.
+
+        Limenia reads the device bits (Device Recall, DeviceCheck), and on
+        Android the integrity verdicts, and answers with a short assessment.
+        If the user is banned or suspended and the bits differ, it marks the
+        device with the same token; if the restriction of a user it marked
+        has ended, or a moderator requested it, it resets the device
+        (`deviceAction`). A marked device of another user creates the system
+        signal `device_flagged`, an Android device without integrity or with
+        risks `device_risk`; rules of the app may react on them. A marked
+        device is a hint, never proof: the app decides about consequences.
+
+        Android: send the integrity token unchanged and not yet decoded (a
+        second decode returns cleared verdicts). `requestHash`, if given,
+        must equal the `requestHash` (standard request) or `nonce` (classic
+        request) of the token; the package must be the one of the connector
+        and the token at most 15 minutes old, else 400
+        `invalid_device_token`. iOS: `environment` names the DeviceCheck
+        environment of the build (`development` for debug builds).
+
+        Fail-open: if Google or Apple cannot be reached, the quota of the
+        project is used up or the provider answers 429 or 5xx, the answer is
+        200 with `status: unevaluated` and `deviceFlag: unknown`. Tokens are
+        never stored or logged. No `Idempotency-Key`: a token is single-use.
+        Counts against the rate limit like a report. Requires the feature
+        `device_connector` (403 `feature_not_in_plan`) and a subscription
+        state other than `expired` (402 `subscription_required`); 409
+        `device_connector_not_configured` if the platform is not active for
+        the app or `test` is used without test mode.
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceCheckRequest"
+      responses:
+        "200":
+          description: Assessment of the device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceCheckResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        default:
+          $ref: "#/components/responses/Error"
+x-webhooks:
+  limeniaEvent:
+    post:
+      summary: Webhook event Limenia sends to the webhook URL of an app
+      description: |
+        Limenia POSTs one event per request to the webhook URL configured for the app in the dashboard
+        (https only, no redirects followed). The event types are listed in the schema EventType.
+        Verify the signature over the raw body before parsing it, deduplicate by event ID, and answer
+        2xx within 10 seconds. Any other answer, a timeout or a connection error is retried: 12 attempts
+        with a backoff from 1 minute up to 6 hours, about 20 hours in total. Delivery is at least once and
+        the order is not guaranteed.
+      parameters:
+        - name: Limenia-Event-Id
+          in: header
+          required: true
+          description: evt_ plus a ULID, equal to id in the body. Use it to deduplicate.
+          schema:
+            type: string
+        - name: Limenia-Event-Type
+          in: header
+          required: true
+          description: The event type, equal to type in the body.
+          schema:
+            $ref: "#/components/schemas/EventType"
+        - name: Limenia-Signature
+          in: header
+          required: true
+          description: |
+            t=<unix seconds>,v1=<hex> with v1 = hex(HMAC-SHA256(webhook secret, t + "." + raw body)).
+            t appears exactly once, v1 at least once (accept any matching v1). Compare in constant time
+            and reject a t more than 300 seconds away from your clock. Every attempt is signed anew.
+          schema:
+            type: string
+        - name: User-Agent
+          in: header
+          required: false
+          schema:
+            type: string
+            example: Limenia-Webhooks/1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEvent"
+      responses:
+        "2XX":
+          description: Event accepted. Also answer 2xx for duplicates and unknown event types.
+        default:
+          description: Any other answer counts as a failure and is retried.
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: API key of an app (`lm_live_...` or `lm_test_...`). Determines tenant and app.
+    revenuecatWebhook:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: Authorization header value Limenia created for the RevenueCat webhook of one app (shown once in the dashboard). RevenueCat sends it with every event; the scheme `Bearer ` is optional.
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      description: ID of the tenant (ULID), part of the RevenueCat webhook URL Limenia shows in the dashboard.
+      schema:
+        type: string
+        pattern: "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+    AppId:
+      name: appId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+    AppealId:
+      name: appealId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+    ReviewId:
+      name: reviewId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+    ExternalUserId:
+      name: externalUserId
+      in: path
+      required: true
+      description: ID of the user in the app.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+  schemas:
+    SoRGround:
+      type: object
+      required: [basis, policyCode, title]
+      properties:
+        basis:
+          $ref: "#/components/schemas/LegalBasis"
+        policyCode:
+          type: string
+        title:
+          type: string
+        lawReference:
+          type: string
+    StatementOfReasonsStructured:
+      type: object
+      description: Information of the statement of reasons, based on Art. 17 DSA (to be reviewed legally before launch).
+      required: [action, territorialScope, facts, basedOnNotice, noticeSource, automatedDetection, automatedDecision, automation, grounds, redress]
+      properties:
+        action:
+          $ref: "#/components/schemas/ModerationAction"
+        endsAt:
+          type: string
+          format: date-time
+          description: End of a temporary restriction.
+        territorialScope:
+          type: string
+          description: Scope of the restriction, `app` (the whole app).
+        facts:
+          type: string
+        basedOnNotice:
+          type: boolean
+          description: The decision follows a report of a user.
+        noticeSource:
+          type: string
+          enum: [notice, trusted_flagger, own_initiative]
+          description: |
+            What led to the decision: `trusted_flagger` if at
+            least one report of the case comes from a trusted flagger,
+            `notice` for reports of users, `own_initiative` otherwise
+            (reports with `source: system` only, actions in the user file,
+            review requests). Decisions from before API 0.16.0 derive it from
+            `basedOnNotice`.
+        automatedDetection:
+          type: boolean
+          description: 'The case has at least one report with `source: system` (detected automatically by the app or by Limenia).'
+        automatedDecision:
+          type: boolean
+          description: True only with `automation` `full`.
+        automation:
+          type: string
+          enum: [none, partial, full]
+          description: |
+            Use of automated means for the decision, in the terms of the DSA
+            transparency database: `none`; `partial`, a moderator
+            took and confirmed an AI suggestion (stage A); `full`, an
+            automatic decision (stage B). Decisions from before API 0.19.0
+            are `none`.
+        grounds:
+          type: array
+          items:
+            $ref: "#/components/schemas/SoRGround"
+        redress:
+          type: string
+    StatementOfReasons:
+      type: object
+      required: [locale, text, structured]
+      properties:
+        locale:
+          $ref: "#/components/schemas/Locale"
+        text:
+          type: string
+          description: Ready-made text in the language of the tenant, shown to the affected user by the app. With an active RevenueCat connector the text adds generic sentences about purchases (for example promotional access ended or a web subscription cancelled), without amounts or products; there is no structured counterpart.
+        structured:
+          $ref: "#/components/schemas/StatementOfReasonsStructured"
+    Ping:
+      type: object
+      required: [tenantId, appId, appSlug, tenantStatus]
+      properties:
+        tenantId:
+          type: string
+        appId:
+          type: string
+        appSlug:
+          type: string
+        tenantStatus:
+          $ref: "#/components/schemas/TenantStatus"
+    ReportSource:
+      type: string
+      enum: [user, system]
+      description: |
+        `user`: reported by a user. `system`: detected automatically, by the
+        app itself or by Limenia; a report Limenia creates itself carries
+        `context` in the dashboard (e.g. `context.revenuecat` for ban evasion). Apps send `system` for what they detect themselves.
+    ExternalUserRef:
+      type: object
+      required: [externalUserId]
+      properties:
+        externalUserId:
+          type: string
+          minLength: 1
+          maxLength: 128
+    ReportSubject:
+      type: object
+      required: [externalUserId]
+      properties:
+        externalUserId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        displayName:
+          type: string
+          maxLength: 100
+    ReportMedia:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+          description: https URL the medium can be downloaded from (e.g. a signed URL). Only images and videos up to 20 MB are copied.
+    ReportContent:
+      type: object
+      required: [externalContentId, contentType]
+      properties:
+        externalContentId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        contentType:
+          type: string
+          pattern: "^[a-z0-9_]{1,40}$"
+          example: comment
+        text:
+          type: string
+          maxLength: 20000
+        media:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/ReportMedia"
+        externalUrl:
+          type: string
+          maxLength: 2048
+          description: Link to the content in the app, stored as a reference only.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the content was created in the app.
+        context:
+          type: object
+          additionalProperties: true
+          description: Small JSON object with context (at most 4 KB), e.g. the ID of the post a comment belongs to.
+    CreateReportRequest:
+      type: object
+      required: [source, reasonCategory]
+      description: At least one of `subject` and `content` is required.
+      properties:
+        source:
+          $ref: "#/components/schemas/ReportSource"
+        reasonCategory:
+          type: string
+          pattern: "^[a-z0-9_]{2,40}$"
+          description: |
+            Reason, usually the code of a policy of the tenant (e.g.
+            `harassment_hate`). A report brings priority `normal` to its case
+            (a case keeps the highest priority of its reports). Codes with a
+            fixed meaning in Limenia, whether or not the tenant has a policy
+            with that code:
+            - `child_safety` and `protection_of_minors`: suspected abuse of
+              minors. The case becomes `urgent`, and media are only
+              referenced, never copied.
+            - `ban_evasion` (dashboard label "Umgehung einer Sperre", "Ban
+              evasion"): the user circumvents a ban or suspension, e.g. with
+              another account. Limenia reports it itself when RevenueCat moves
+              purchases from a banned or suspended user to another account; apps may send it as well, e.g. when they recognise a
+              device or payment method of a banned user. No special handling:
+              a report of the app brings priority `normal` like any other
+              code; only the reports Limenia creates itself bring `high`.
+          example: harassment_hate
+        reasonText:
+          type: string
+          maxLength: 2000
+        goodFaith:
+          type: boolean
+          description: |
+            The reporting person confirmed that they believe in good faith that
+            the information and allegations in the report are accurate and
+            complete (Art. 16(2)(d) DSA), e.g. with the checkbox of the report
+            sheet of `limenia_ui`. Only with `source: user`
+            (`validation_failed`, field error `invalid`). Absent counts as
+            not confirmed; Limenia stores and shows it but does not treat the
+            report differently.
+        reporter:
+          $ref: "#/components/schemas/ExternalUserRef"
+        subject:
+          $ref: "#/components/schemas/ReportSubject"
+        content:
+          $ref: "#/components/schemas/ReportContent"
+        externalReportId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Optional ID of the report in the app; returned in the webhook `reports.resolved`.
+        trustedFlaggerId:
+          type: string
+          pattern: "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+          description: |
+            The reporting person acts for this trusted flagger of the tenant
+            (Art. 22 DSA); the app checks who reports. Only with
+            `source: user`. The flagger must exist and be active
+            (`validation_failed`, field error `unknown`). The case gets at
+            least priority `high` and the mark `trustedFlagger`.
+    CreatedReport:
+      type: object
+      required: [reportId, caseId, caseCreated]
+      properties:
+        reportId:
+          type: string
+        caseId:
+          type: string
+        caseCreated:
+          type: boolean
+          description: True if the report opened a new case, false if it was added to an open case.
+        reporterWarning:
+          $ref: "#/components/schemas/ReporterWarning"
+    ReporterWarning:
+      type: object
+      description: |
+        A moderator warned the reporter for frequently submitting manifestly
+        unfounded notices (Art. 23 DSA). Present on every response to a report
+        of this reporter while the warning stands. Show the reporter a warning
+        that further unfounded notices can lead to a suspension of their
+        notices.
+      required: [issuedAt]
+      properties:
+        issuedAt:
+          type: string
+          format: date-time
+    SubjectSanctionStatus:
+      type: string
+      enum: [active, warned, suspended, banned]
+    SubjectStatus:
+      type: object
+      required: [externalUserId, status]
+      properties:
+        externalUserId:
+          type: string
+        status:
+          $ref: "#/components/schemas/SubjectSanctionStatus"
+        suspendedUntil:
+          type: string
+          format: date-time
+    UpdateSubjectRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          maxLength: 100
+    Locale:
+      type: string
+      enum: [de, en]
+    LegalBasis:
+      type: string
+      enum: [terms, law]
+      description: '`terms`: violation of the terms of service, `law`: illegal content.'
+    ModerationAction:
+      type: string
+      enum: [dismiss, remove_content, restrict_content, warn_user, suspend_user, ban_user, restore, reject_submission]
+      description: '`reject_submission`: refusal to publish content submitted for review. `restore`: lifts an earlier restriction, of the content or of the account as `restoreScope` says.'
+    RestoreScope:
+      type: string
+      enum: [content, account]
+      description: |
+        What a decision `restore` lifts; set only for `restore`.
+        - `content`: the restriction of the content (`remove_content`,
+          `restrict_content` or `reject_submission`). Taken after a complaint
+          against such a decision and for every `restore` on a review
+          request. The status of the user and their account stay as they
+          are: no Firebase action, a suspension or ban stays.
+        - `account`: the restriction of the account. The user becomes
+          `active` again (Firebase: `enable_user`). Taken for a `restore` from
+          the user file or on a case, and after a complaint against
+          `warn_user`, `suspend_user` or `ban_user`.
+    TenantStatus:
+      type: string
+      enum: [onboarding, active, suspended]
+    Problem:
+      type: object
+      description: Problem details as defined in RFC 9457, extended by `code` and `errors`.
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          description: URI reference identifying the problem type.
+          default: about:blank
+          example: about:blank
+        title:
+          type: string
+          description: Short, human-readable summary of the problem type.
+          example: Not Found
+        status:
+          type: integer
+          minimum: 100
+          maximum: 599
+          example: 404
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence.
+        instance:
+          type: string
+          description: URI reference identifying this occurrence.
+        code:
+          type: string
+          description: Machine-readable error code, see the API description for the list.
+          example: not_found
+        errors:
+          type: array
+          description: Field errors. Present with `validation_failed` and with the more specific codes of invalid input that name a field, e.g. `review_type_unknown`, `outcome_not_allowed` and `reply_check_failed` (field `/text`, the `code` of each error is a rule of the check before sending).
+          items:
+            $ref: "#/components/schemas/FieldError"
+        suspendedUntil:
+          type: string
+          format: date-time
+          description: With `reporter_suspended`, the end of the suspension of the reporter's notices.
+    FieldError:
+      type: object
+      required: [field, code]
+      properties:
+        field:
+          type: string
+          description: JSON pointer or parameter name of the invalid field.
+          example: /reasonCategory
+        code:
+          type: string
+          description: Machine-readable reason, e.g. `required`, `too_long`, `invalid`.
+          example: required
+        message:
+          type: string
+    EventType:
+      type: string
+      enum: [decision.created, subject.status_changed, appeal.resolved, reports.resolved, review.decided, test.ping]
+    WebhookEvent:
+      type: object
+      description: |
+        Body of every webhook request. Headers: `Limenia-Event-Id`,
+        `Limenia-Event-Type` and `Limenia-Signature: t=<unix>,v1=<hex>` with
+        hex(hmac_sha256(secret, t + "." + body)). Reject timestamps older than
+        5 minutes and deduplicate by event ID.
+      required: [id, type, createdAt, app]
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/EventType"
+        createdAt:
+          type: string
+          format: date-time
+        app:
+          $ref: "#/components/schemas/WebhookApp"
+        decision:
+          $ref: "#/components/schemas/WebhookDecision"
+        subject:
+          $ref: "#/components/schemas/WebhookSubjectStatus"
+        appeal:
+          $ref: "#/components/schemas/WebhookAppeal"
+        reports:
+          $ref: "#/components/schemas/WebhookReportsResolved"
+        review:
+          $ref: "#/components/schemas/WebhookReview"
+    WebhookApp:
+      type: object
+      required: [id, slug]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+    WebhookDecision:
+      type: object
+      required: [id, action, policies, statementOfReasons, decidedAt]
+      properties:
+        id:
+          type: string
+        action:
+          $ref: "#/components/schemas/ModerationAction"
+        suspendUntil:
+          type: string
+          format: date-time
+        content:
+          type: object
+          required: [externalContentId]
+          properties:
+            externalContentId:
+              type: string
+        subject:
+          type: object
+          required: [externalUserId]
+          properties:
+            externalUserId:
+              type: string
+        policies:
+          type: array
+          items:
+            type: object
+            required: [code, title]
+            properties:
+              code:
+                type: string
+              title:
+                type: string
+        statementOfReasons:
+          $ref: "#/components/schemas/StatementOfReasons"
+        decidedAt:
+          type: string
+          format: date-time
+        appealId:
+          type: string
+          description: Set if the decision results from a complaint (`appeal.resolved` follows).
+        replacesDecisionId:
+          type: string
+          description: The earlier decision this one replaces after a complaint.
+        reviewId:
+          type: string
+          description: 'Set if the decision is about a review request: its restriction or rejection (`review.decided` follows) or a new decision after a complaint against one (with `appealId`).'
+        restoreScope:
+          $ref: "#/components/schemas/RestoreScope"
+    WebhookSubjectStatus:
+      type: object
+      description: 'New status of the user, sent as `subject.status_changed` without a decision: when a suspension ends (by the hourly job, or by a decision that takes over its end), and when the new decision on a complaint ends the ban or suspension it replaces. After a decision the status is the one after the decision, and `createdAt` is its `decidedAt`.'
+      required: [externalUserId, status]
+      properties:
+        externalUserId:
+          type: string
+        status:
+          $ref: "#/components/schemas/SubjectSanctionStatus"
+        suspendedUntil:
+          type: string
+          format: date-time
+    AppellantType:
+      type: string
+      enum: [subject, reporter]
+      description: '`subject`: the affected user; `reporter`: a user who reported the case.'
+    AppealStatus:
+      type: string
+      enum: [open, in_review, resolved]
+    AppealOutcome:
+      type: string
+      enum: [upheld, changed]
+      description: '`upheld`: the decision stays; `changed`: a new decision replaces it.'
+    CreateAppealRequest:
+      type: object
+      required: [decisionId, appellant, text]
+      properties:
+        decisionId:
+          type: string
+          pattern: "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+          description: ID of the decision (from the webhook `decision.created`).
+        appellant:
+          $ref: "#/components/schemas/Appellant"
+        text:
+          type: string
+          minLength: 1
+          maxLength: 5000
+          description: Reasons of the complainant (plain text).
+        externalAppealId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Optional ID of the complaint in the app.
+    Appellant:
+      type: object
+      required: [type, externalUserId]
+      properties:
+        type:
+          $ref: "#/components/schemas/AppellantType"
+        externalUserId:
+          type: string
+          minLength: 1
+          maxLength: 128
+    CreatedAppeal:
+      type: object
+      required: [appealId, status]
+      properties:
+        appealId:
+          type: string
+        status:
+          $ref: "#/components/schemas/AppealStatus"
+    AppealStatusInfo:
+      type: object
+      required: [id, decisionId, appellantType, status, createdAt]
+      properties:
+        id:
+          type: string
+        externalAppealId:
+          type: string
+        decisionId:
+          type: string
+        appellantType:
+          $ref: "#/components/schemas/AppellantType"
+        status:
+          $ref: "#/components/schemas/AppealStatus"
+        createdAt:
+          type: string
+          format: date-time
+        outcome:
+          $ref: "#/components/schemas/AppealOutcome"
+        statementText:
+          type: string
+          description: Ready-made answer to the complainant in the language of the tenant.
+        resolvedAt:
+          type: string
+          format: date-time
+        newDecisionId:
+          type: string
+    WebhookAppeal:
+      type: object
+      required: [id, decisionId, appellantType, outcome, statementText, resolvedAt]
+      properties:
+        id:
+          type: string
+        externalAppealId:
+          type: string
+        decisionId:
+          type: string
+        appellantType:
+          $ref: "#/components/schemas/AppellantType"
+        outcome:
+          $ref: "#/components/schemas/AppealOutcome"
+        statementText:
+          type: string
+          description: Answer to show to the complainant.
+        resolvedAt:
+          type: string
+          format: date-time
+        newDecisionId:
+          type: string
+          description: Set for `changed`; the new decision follows as `decision.created`.
+    WebhookReportsResolved:
+      type: object
+      description: Result of the decision for the users who reported the case (Art. 16 (5) DSA). At most 100 reports per event.
+      required: [decisionId, action, policies, decidedAt, appealDeadline, items]
+      properties:
+        decisionId:
+          type: string
+        action:
+          $ref: "#/components/schemas/ModerationAction"
+        policies:
+          type: array
+          items:
+            type: object
+            required: [code, title]
+            properties:
+              code:
+                type: string
+              title:
+                type: string
+        decidedAt:
+          type: string
+          format: date-time
+        appealDeadline:
+          type: string
+          format: date-time
+          description: Until then the reporters can complain via `POST /v1/appeals`.
+        items:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [reportId]
+            properties:
+              reportId:
+                type: string
+              externalReportId:
+                type: string
+    ReviewStatus:
+      type: string
+      enum: [pending, in_review, decided]
+    ReviewOutcome:
+      type: string
+      enum: [approved, restricted, rejected]
+    CreateReviewRequest:
+      type: object
+      required: [type, content]
+      properties:
+        type:
+          type: string
+          pattern: "^[a-z0-9_]{2,40}$"
+          description: Code of a review type of the app.
+        externalReviewId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Optional ID of the request in the app; returned in `review.decided`.
+        subject:
+          $ref: "#/components/schemas/ReportSubject"
+        content:
+          $ref: "#/components/schemas/ReportContent"
+    CreatedReview:
+      type: object
+      required: [reviewId, status, dueAt]
+      properties:
+        reviewId:
+          type: string
+        status:
+          $ref: "#/components/schemas/ReviewStatus"
+        dueAt:
+          type: string
+          format: date-time
+    ReviewStatusInfo:
+      type: object
+      required: [id, type, status, submittedAt]
+      properties:
+        id:
+          type: string
+        externalReviewId:
+          type: string
+        type:
+          type: string
+        status:
+          $ref: "#/components/schemas/ReviewStatus"
+        submittedAt:
+          type: string
+          format: date-time
+        outcome:
+          $ref: "#/components/schemas/ReviewOutcome"
+        decidedAt:
+          type: string
+          format: date-time
+        decisionId:
+          type: string
+          description: Set for `restricted` and `rejected`.
+    WebhookReview:
+      type: object
+      required: [id, type, outcome, decidedAt]
+      properties:
+        id:
+          type: string
+        externalReviewId:
+          type: string
+        type:
+          type: string
+          description: Code of the review type.
+        outcome:
+          $ref: "#/components/schemas/ReviewOutcome"
+        decidedAt:
+          type: string
+          format: date-time
+        decisionId:
+          type: string
+          description: Set for `restricted` and `rejected`; the decision with its statement of reasons follows as `decision.created`.
+        content:
+          type: object
+          required: [externalContentId]
+          properties:
+            externalContentId:
+              type: string
+    SignalInput:
+      type: object
+      required: [type, externalUserId]
+      properties:
+        type:
+          type: string
+          pattern: "^[a-z0-9_]{2,40}$"
+          description: Code of an active signal type of the app.
+        externalUserId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        value:
+          type: number
+          format: double
+        occurredAt:
+          type: string
+          format: date-time
+          description: Default the time of receipt; at most 5 minutes ahead and 24 hours back.
+        context:
+          type: object
+          additionalProperties: true
+          description: |
+            Small JSON object (at most 4 KB, field error `too_large`) with IDs
+            and technical details only. Keys must not be empty or of the form
+            `__x__`, arrays must not contain arrays, and objects and arrays
+            nest at most 10 levels (field error `invalid`).
+    CreateSignalsRequest:
+      type: object
+      required: [signals]
+      properties:
+        signals:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/SignalInput"
+    CreatedSignals:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: integer
+          description: Number of signals stored.
+    DevicePlatform:
+      type: string
+      enum: [android, ios, test]
+      description: |
+        `android`: Play Integrity with Device Recall; `ios`: DeviceCheck;
+        `test`: test tokens `test:<device>` of the test mode.
+    DeviceFlag:
+      type: string
+      enum: [none, suspended, banned, unknown]
+      description: |
+        Marking of the device by Limenia's bits: `banned` (permanently
+        banned), `suspended` (banned for a time), `none`, or `unknown` if the
+        bits could not be read (no Play licence, Device Recall not enabled,
+        provider unreachable). The bits belong to the developer account (Play
+        developer account, Apple team), so a ban in another app of the same
+        account marks the device too.
+    DeviceAction:
+      type: string
+      enum: [none, marked_banned, marked_suspended, reset]
+      description: What Limenia wrote to the device during the check.
+    DeviceCheckEvent:
+      type: string
+      enum: [registration, login, report, other]
+    DeviceCheckStatus:
+      type: string
+      enum: [evaluated, unevaluated]
+      description: '`unevaluated`: Google or Apple could not be asked (fail-open), `deviceFlag` is `unknown`.'
+    DeviceIntegrityLevel:
+      type: string
+      enum: [strong, device, basic, virtual, none, unevaluated]
+      description: Highest device verdict of Play Integrity (`MEETS_STRONG_INTEGRITY` … `MEETS_VIRTUAL_INTEGRITY`, or none of them).
+    DeviceRisk:
+      type: string
+      enum: [play_protect_off, play_protect_medium_risk, play_protect_high_risk, capturing_apps, controlling_apps, overlay_apps, high_activity]
+      description: |
+        Risks of Play Integrity: Play Protect off or reporting risks, unknown
+        apps that capture the screen, control the device or show overlays
+        (`appAccessRiskVerdict`), very many token requests from the device
+        (`recentDeviceActivity` `LEVEL_4`). Later versions add values.
+    DeviceIntegrity:
+      type: object
+      description: Summary of the Play Integrity verdicts (Android only); tokens and raw verdicts are never stored.
+      required: [device, risks, testingResponse]
+      properties:
+        device:
+          $ref: "#/components/schemas/DeviceIntegrityLevel"
+        appRecognized:
+          type: boolean
+          description: '`PLAY_RECOGNIZED`; absent if Google did not evaluate it.'
+        licensed:
+          type: boolean
+          description: '`LICENSED`; absent if Google did not evaluate it.'
+        risks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceRisk"
+        testingResponse:
+          type: boolean
+          description: A test response configured in the Play Console.
+    DeviceCheckRequest:
+      type: object
+      required: [externalUserId, platform, token]
+      properties:
+        externalUserId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        platform:
+          $ref: "#/components/schemas/DevicePlatform"
+        token:
+          type: string
+          minLength: 1
+          maxLength: 8000
+          description: Integrity token (Android, not yet decoded), DeviceCheck token (iOS, Base64) or `test:<device>[:risk]` (test mode).
+        requestHash:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: |
+            Android: the `requestHash` or `nonce` the app requested the token
+            with; checked if given. Recommended:
+            `base64url(SHA-256("limenia:" + externalUserId + ":" + nonce))`
+            with a random nonce of the app backend.
+        environment:
+          type: string
+          enum: [production, development]
+          description: iOS only, default `production`.
+        event:
+          $ref: "#/components/schemas/DeviceCheckEvent"
+    DeviceCheckResult:
+      type: object
+      required: [checkId, platform, status, deviceFlag, deviceAction, subject, test]
+      properties:
+        checkId:
+          type: string
+        platform:
+          $ref: "#/components/schemas/DevicePlatform"
+        status:
+          $ref: "#/components/schemas/DeviceCheckStatus"
+        deviceFlag:
+          $ref: "#/components/schemas/DeviceFlag"
+        flaggedSince:
+          type: string
+          pattern: "^[0-9]{4}-[0-9]{2}$"
+          description: Month the device was marked (`YYYY-MM`), if known.
+        deviceAction:
+          $ref: "#/components/schemas/DeviceAction"
+        integrity:
+          $ref: "#/components/schemas/DeviceIntegrity"
+        subject:
+          $ref: "#/components/schemas/SubjectStatus"
+        test:
+          type: boolean
+  responses:
+    BadRequest:
+      description: The request is malformed or failed validation.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Forbidden:
+      description: Authenticated, but not allowed to perform this action.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: The resource does not exist or is not visible to the caller.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: The request conflicts with the current state of the resource.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PaymentRequired:
+      description: The subscription of the tenant has expired (`subscription_required`). The owner buys a plan to continue.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    TooManyRequests:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After:
+          description: Seconds until a new request may be made.
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Error:
+      description: Unexpected error.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
