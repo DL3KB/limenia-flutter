@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: pub
+    directories:
+      - /packages/limenia
+      - /packages/limenia_device
+    schedule:
+      interval: weekly
+    groups:
+      pub:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -72,7 +72,7 @@ Future<void> checkDevice(MyBackend backend, {required String event}) async {
 }
 ```
 
-Your backend calls `POST /v1/devices/check` of Limenia with its API key, e.g. with the TypeScript or Dart client of Limenia (`checkDevice`).
+Your backend calls `POST /v1/devices/check` of Limenia with its API key, e.g. with the TypeScript client of Limenia (`checkDevice`) or a plain HTTP request, as described in the [integration guide](https://limenia.eu/docs/integration.md).
 
 When to check:
 
