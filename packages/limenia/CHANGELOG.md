@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.1 (2026-10-12)
+
+Documentation and spec copy only; the API of the package is unchanged.
+
+- The spec copy is the public OpenAPI description at API version 0.28.0. It adds the optional field `identifiers` (schema `SubjectIdentifiers`, HMACs of e-mail address and phone number for ban evasion across apps) to report subjects (also of review requests), signals, device checks and `PUT /v1/subjects/{externalUserId}`, where `displayName` is now optional.
+- The models deliberately do not map `identifiers`: the identifier key stays in the backend of the app, which adds them when it forwards a request. `test/spec_test.dart` lists these fields as left to the backend.
+- README: section "Ban evasion across apps".
+
 ## 0.12.0 (2026-10-09)
 
 First release on pub.dev. The widgets of the former package `limenia_ui` are now part of `limenia`, so one package covers the headless API and the widgets. The API is unchanged; it follows Limenia API version 0.22.0, and the spec copy is the public OpenAPI description at 0.25.0.

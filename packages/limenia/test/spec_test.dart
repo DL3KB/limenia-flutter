@@ -309,6 +309,37 @@ void main() {
     }, covered);
   });
 
+  test('identifiers for ban evasion across apps are left to the backend (API 0.28.0)', () {
+    // The identifier key must stay in the backend of the app: anyone could
+    // extract it from an app and test e-mail addresses against it. So the app
+    // never computes identifiers, and the package deliberately does not map
+    // SubjectIdentifiers or the fields below. The backend adds `identifiers`
+    // when it forwards a request (README, "Ban evasion across apps").
+    const notMapped = {
+      'ReportSubject': 'identifiers', // also POST /v1/reviews, its subject is a ReportSubject
+      'SignalInput': 'identifiers',
+      'DeviceCheckRequest': 'identifiers',
+      'UpdateSubjectRequest': 'identifiers', // PUT /v1/subjects is for the backend only
+    };
+    for (final MapEntry(key: name, value: field) in notMapped.entries) {
+      expect((prop(name, field)['allOf'] as YamlList).single, {r'$ref': '#/components/schemas/SubjectIdentifiers'},
+          reason: '$name.$field');
+    }
+    expect(prop('CreateReviewRequest', 'subject')[r'$ref'], '#/components/schemas/ReportSubject');
+    expect((schema('SubjectIdentifiers')['properties'] as YamlMap).keys,
+        unorderedEquals(['keyVersion', 'email', 'phone']));
+    expect(schema('SubjectIdentifiers')['required'], isNull);
+
+    // The models never write the field.
+    for (final json in [
+      const ReportedUser('u', displayName: 'n').toJson(),
+      const SignalInput(type: 'score_jump', externalUserId: 'u').toJson(),
+      const DeviceCheckRequest(externalUserId: 'u', platform: DevicePlatform.test, token: 'test:a').toJson(),
+    ]) {
+      expect(json, isNot(contains('identifiers')));
+    }
+  });
+
   test('patterns', () {
     expect(prop('CreateReportRequest', 'reasonCategory')['pattern'], r'^[a-z0-9_]{2,40}$');
     expect(prop('ReportContent', 'contentType')['pattern'], r'^[a-z0-9_]{1,40}$');

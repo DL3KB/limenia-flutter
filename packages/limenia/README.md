@@ -328,6 +328,7 @@ The backend is the trust boundary. The reporter's device can send arbitrary data
 - For device checks (API version 0.20.0), it issues the request hash itself (`deviceRequestHash(uid, newDeviceNonce())`, single use, kept for a few minutes), sets the user from the login (`DeviceCheckRequest.withExternalUserId(uid)`), forwards only a request hash it issued to this user and forwards the request to `POST /v1/devices/check`, a new endpoint of your backend, without an `Idempotency-Key`. It accepts `platform: test` only where test tokens make sense (debug builds, test accounts). It never stores or logs the token. See [Device checks](#device-checks).
 - Where possible, it loads the snapshot (text, media URLs, author) from its own database instead of trusting the device.
 - It passes the `Idempotency-Key` header on to Limenia unchanged.
+- For ban evasion across apps (API version 0.28.0), it adds `identifiers` from its own user record when it forwards a request and drops any `identifiers` the device sent. See [Ban evasion across apps](#ban-evasion-across-apps).
 - It returns Limenia's status, problem body and `Retry-After` unchanged. The problem body of 403 `reporter_suspended` carries `suspendedUntil`; without it the app only knows that the reporter is suspended, not until when.
 - For the status, it only answers for the signed-in user. It returns the status of a complaint only to the person who filed it, and the status of a review only to the author. For this, it remembers which `appealId` or `reviewId` belongs to which user.
 - It keeps the API key in a secret store.
@@ -819,6 +820,17 @@ return Response.ok(jsonEncode(result.toJson()));
 
 `DeviceCheckRequest.toString()` never shows the token. Do not log the request body either.
 
+## Ban evasion across apps
+
+A tenant with several apps can let Limenia (API version 0.28.0) link the user files of its apps through the same e-mail address or phone number. When a user who is banned or suspended in one app becomes active in another, a rule opens a case there, and a moderator decides. The feature is coming soon and available on request.
+
+Your **backend** sends the identifiers, not the app, and this package deliberately has no support for them:
+
+- Limenia receives only HMACs of the normalised e-mail address and phone number in the optional field `identifiers`, computed with the identifier key of the tenant (`lmid_…`). Like the API key, that key belongs only in your backend. Anyone could extract it from an app and test e-mail addresses against it, so the app never computes identifiers, and the models of this package (`ReportedUser`, `SignalInput`, `DeviceCheckRequest`) have no `identifiers` field.
+- Your backend adds them when it forwards a request: `subject.identifiers` for reports and review requests, `signals[i].identifiers` for signals, `identifiers` for device checks. It takes the e-mail address and phone number from its own user record, never from the device, and drops any `identifiers` the device sent. Recommended: `PUT /v1/subjects/{externalUserId}` with `identifiers` at registration and on every change of the address or number.
+- Identifiers never make a request fail and never change an answer, so nothing changes in the app or in `LimeniaTransport`.
+- The normalisation, the HMAC, test vectors, the check values and snippets for Node.js, Go, Python and Dart are in the [integration guide](https://limenia.eu/docs/integration.md), section 3.13. Since 0.12.0 this package needs Flutter, so a Dart backend computes the HMAC itself with `package:crypto`, as shown there.
+
 ## Tracking the status
 
 ```dart
@@ -1118,7 +1130,7 @@ There is no separate test environment. Even an `lm_test_` key writes to the real
 
 ## API specification
 
-`spec/openapi.yaml` is a copy of the public OpenAPI description of Limenia (<https://limenia.eu/openapi/v1.yaml>: the operations under `/v1` and the webhook events). `test/spec_test.dart` checks the package against it: the enums (actions, restore scopes, notice sources, statuses, sources, event types, complaints, reviews), the limits and patterns of reports (`trustedFlaggerId` and `goodFaith` included), complaints, review requests, signals and device checks, that `POST /v1/signals`, `POST /v1/devices/check` and their error codes are in the spec, the device enums and that the recommended request hash is the one `deviceRequestHash` computes, that every operation under `/v1` is either covered by `LimeniaTransport` or a known exception, the warning and the suspension (`ReporterWarning`, `Problem.suspendedUntil`, 403 `reporter_suspended`), that every field the models read or write is declared in the spec and that they write every required field, and that the events the backend builds match the schema `WebhookEvent`.
+`spec/openapi.yaml` is a copy of the public OpenAPI description of Limenia (<https://limenia.eu/openapi/v1.yaml>: the operations under `/v1` and the webhook events). `test/spec_test.dart` checks the package against it: the enums (actions, restore scopes, notice sources, statuses, sources, event types, complaints, reviews), the limits and patterns of reports (`trustedFlaggerId` and `goodFaith` included), complaints, review requests, signals and device checks, that `POST /v1/signals`, `POST /v1/devices/check` and their error codes are in the spec, the device enums and that the recommended request hash is the one `deviceRequestHash` computes, that every operation under `/v1` is either covered by `LimeniaTransport` or a known exception, that the models deliberately leave the `identifiers` for ban evasion across apps to the backend, the warning and the suspension (`ReporterWarning`, `Problem.suspendedUntil`, 403 `reporter_suspended`), that every field the models read or write is declared in the spec and that they write every required field, and that the events the backend builds match the schema `WebhookEvent`.
 
 When Limenia's API changes:
 
