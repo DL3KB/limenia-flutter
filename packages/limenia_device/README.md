@@ -72,7 +72,7 @@ Future<void> checkDevice(MyBackend backend, {required String event}) async {
 }
 ```
 
-Your backend calls `POST /v1/devices/check` of Limenia with its API key, e.g. with the TypeScript client of Limenia (`checkDevice`) or a plain HTTP request, as described in the [integration guide](https://limenia.eu/docs/integration.md).
+Your backend calls `POST /v1/devices/check` of Limenia with its API key, as described in the [developer docs](https://limenia.eu/docs/device-checks/).
 
 When to check:
 
@@ -118,7 +118,7 @@ Only accept test tokens from debug builds or test accounts in your backend, and 
 ## Privacy
 
 - Tokens are single-use. The plugin never logs or stores them; your app and backend must not either. Limenia stores only the summarized result, never the token, the request hash or device identifiers.
-- The bits survive a reinstall, so the tenant needs a basis under data protection law: the privacy policy, the privacy details in the stores (App Store privacy labels, Play data safety), the check under § 25 TDDDG for the access to the device, a contact for users who ask to reset a marking (e.g. after buying a used device; a moderator then requests a reset in the user file), and a data protection impact assessment. The Limenia integration guide has the details and a template for the impact assessment.
+- The bits survive a reinstall, so the tenant needs a basis under data protection law: the privacy policy, the privacy details in the stores (App Store privacy labels, Play data safety), the check under § 25 TDDDG for the access to the device, a contact for users who ask to reset a marking (e.g. after buying a used device; a moderator then requests a reset in the user file), and a data protection impact assessment. The duties of the tenant are listed in the [developer docs](https://limenia.eu/docs/device-connector/#duties-of-the-tenant).
 
 ## API
 

@@ -12,10 +12,10 @@ The Flutter plugin [`limenia_device`](https://pub.dev/packages/limenia_device) i
 - It is a Flutter package without native code and without runtime dependencies besides Flutter. The only platform code, the device token for device checks, lives in the separate plugin `limenia_device`, which apps add only if they use the device connector.
 - Up to 0.11.0 the API was a pure Dart package and the widgets were the separate package `limenia_ui`. Since 0.12.0 both are in this package; see [Upgrading from `limenia_ui`](#upgrading-from-limenia_ui).
 - The headless API (`package:limenia/limenia.dart`) contains no widgets. Use the widgets of `package:limenia/ui.dart`, or build the dialog, the report form and the notice for a suspension yourself.
-- The Limenia API key stays in the backend ([integration guide](https://limenia.eu/docs/integration.md), section 2.2). The app never talks to Limenia directly, only through the app's backend. For this, you implement the interface `LimeniaTransport`.
+- The Limenia API key stays in the backend ([developer docs](https://limenia.eu/docs/quickstart/#configure-your-backend)). The app never talks to Limenia directly, only through the app's backend. For this, you implement the interface `LimeniaTransport`.
 - The package is written by hand, not generated. A test compares enums and limits with a copy of the API specification in `spec/openapi.yaml` (see [API specification](#api-specification)).
 
-The API itself, the webhooks and example backends are described in the [integration guide of Limenia](https://limenia.eu/docs/integration.md) and the [OpenAPI description](https://limenia.eu/openapi/v1.yaml).
+The API itself, the webhooks and example backends are described in the [developer docs of Limenia](https://limenia.eu/docs/) and the [OpenAPI description](https://limenia.eu/openapi/v1.yaml).
 
 ## Installation
 
@@ -451,7 +451,7 @@ app.post("/moderation/devices/check", requireLogin, async (req, res) => {
 
 `trustedFlaggerOf`, `rememberAppeal`, `rememberReview`, `rememberDeviceHash` and `takeDeviceHash` are your own storage and records (`crypto` is `node:crypto`). `limenia.checkDevice` is the helper of `@limenia/client` for `POST /v1/devices/check` (API version 0.20.0). Pass on `GET /v1/appeals/{appealId}` the same way with `limenia.getAppeal(appealId)`, after you have checked that the complaint belongs to the signed-in user. Likewise `GET /v1/reviews/{reviewId}` with `limenia.getReview(reviewId)`, only for the author.
 
-The field format of the problem body is in Limenia's [integration guide](https://limenia.eu/docs/integration.md), section 3.1. `LimeniaException.fromResponse` reads `code`, `title`, `detail` and `errors`. `LimeniaError` of `@limenia/client` keeps the field errors as `err.errors` (as of API version 0.13.2), and the sketch passes them on. `fieldErrors` then holds them for `validation_failed` and also for the more specific codes that name a field, such as `review_type_unknown` (`/type` with `unknown`). With an older client, `errors` is missing and `fieldErrors` stays empty for errors of Limenia. The check in the package covers the same fields before anything is sent.
+The field format of the problem body is in Limenia's [developer docs](https://limenia.eu/docs/api-basics/#errors). `LimeniaException.fromResponse` reads `code`, `title`, `detail` and `errors`. `LimeniaError` of `@limenia/client` keeps the field errors as `err.errors` (as of API version 0.13.2), and the sketch passes them on. `fieldErrors` then holds them for `validation_failed` and also for the more specific codes that name a field, such as `review_type_unknown` (`/type` with `unknown`). With an older client, `errors` is missing and `fieldErrors` stays empty for errors of Limenia. The check in the package covers the same fields before anything is sent.
 
 ## Reports
 
@@ -829,7 +829,7 @@ Your **backend** sends the identifiers, not the app, and this package deliberate
 - Limenia receives only HMACs of the normalised e-mail address and phone number in the optional field `identifiers`, computed with the identifier key of the tenant (`lmid_…`). Like the API key, that key belongs only in your backend. Anyone could extract it from an app and test e-mail addresses against it, so the app never computes identifiers, and the models of this package (`ReportedUser`, `SignalInput`, `DeviceCheckRequest`) have no `identifiers` field.
 - Your backend adds them when it forwards a request: `subject.identifiers` for reports and review requests, `signals[i].identifiers` for signals, `identifiers` for device checks. It takes the e-mail address and phone number from its own user record, never from the device, and drops any `identifiers` the device sent. Recommended: `PUT /v1/subjects/{externalUserId}` with `identifiers` at registration and on every change of the address or number.
 - Identifiers never make a request fail and never change an answer, so nothing changes in the app or in `LimeniaTransport`.
-- The normalisation, the HMAC, test vectors, the check values and snippets for Node.js, Go, Python and Dart are in the [integration guide](https://limenia.eu/docs/integration.md), section 3.13. Since 0.12.0 this package needs Flutter, so a Dart backend computes the HMAC itself with `package:crypto`, as shown there.
+- The normalisation, the HMAC, test vectors, the check values and snippets for Node.js, Go, Python and Dart are in the [developer docs](https://limenia.eu/docs/identifiers/). Since 0.12.0 this package needs Flutter, so a Dart backend computes the HMAC itself with `package:crypto`, as shown there.
 
 ## Tracking the status
 
@@ -861,7 +861,7 @@ StreamBuilder<SubjectStatus>(
 
 ## Decisions and statement of reasons
 
-The backend receives the webhook and verifies the signature in the `Limenia-Signature` header ([integration guide](https://limenia.eu/docs/integration.md), section 4.2, with a test vector). The verification never belongs in the app. When the backend passes on the verified event, the app reads it like this:
+The backend receives the webhook and verifies the signature in the `Limenia-Signature` header ([developer docs](https://limenia.eu/docs/webhooks/#verifying-the-signature), with a test vector). The verification never belongs in the app. When the backend passes on the verified event, the app reads it like this:
 
 ```dart
 final event = LimeniaEvent.fromJson(jsonDecode(payload) as JsonMap);
@@ -1057,7 +1057,7 @@ LimeniaRestrictionNotice(
   )
   ```
 
-- The notices are advisory, like the status in the app. Your backend enforces restrictions. A banned user may not be able to log in at all: tell them also by e-mail or on the login screen ([integration guide of Limenia](https://limenia.eu/docs/integration.md), section 4.7).
+- The notices are advisory, like the status in the app. Your backend enforces restrictions. A banned user may not be able to log in at all: tell them also by e-mail or on the login screen ([developer docs of Limenia](https://limenia.eu/docs/webhooks/#showing-the-statement-of-reasons)).
 
 ### Texts and languages
 
