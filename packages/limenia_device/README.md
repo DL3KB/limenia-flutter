@@ -104,7 +104,7 @@ Notes:
 ### iOS
 
 1. Apple Developer account, *Certificates, Identifiers & Profiles > Keys*: create a key with DeviceCheck and download the `.p8` file.
-2. In the Limenia dashboard, app settings, section *Device connector*: enter the Team ID, the Key ID and the content of the `.p8` file, then *Test connection*. The key goes straight into Secret Manager and is never shown again. One key serves all apps of the team.
+2. In the Limenia dashboard, app settings, section *Device connector*: enter the Team ID, the Key ID and the content of the `.p8` file, then *Test connection*. Limenia stores the key encrypted and never shows it again. One key serves all apps of the team.
 3. Send `environment: development` for builds signed for development (debug builds run from Xcode). TestFlight and App Store builds use `production`, the default.
 
 The plugin links the DeviceCheck framework. Its privacy manifest is empty: DeviceCheck is no required reason API, and the plugin collects and stores nothing.

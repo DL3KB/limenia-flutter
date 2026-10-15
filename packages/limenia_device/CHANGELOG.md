@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+Documentation only; no change to the code or the native parts.
+
+- README: clearer wording in the iOS setup: Limenia stores the DeviceCheck key encrypted and never shows it again.
+
 ## 0.1.1 (2026-10-09)
 
 First release on pub.dev: install with `limenia_device: ^0.1.1`. No change to the code or the native parts.
