@@ -3,7 +3,7 @@
 openapi: 3.0.3
 info:
   title: Limenia API
-  version: 0.32.0
+  version: 0.33.0
   description: |
     Public API of Limenia for app backends (`/v1`) and the webhook events Limenia sends to apps.
     Developer documentation: https://limenia.eu/docs/ (all pages in one file for coding agents: https://limenia.eu/docs/integration.md)
