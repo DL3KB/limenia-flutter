@@ -1,12 +1,12 @@
 # Limenia public API: the /v1 operations for app backends and the webhook events.
-# Generated from the API specification of Limenia. Guide: https://limenia.eu/docs/integration.md
+# Generated from the API specification of Limenia. Documentation: https://limenia.eu/docs/
 openapi: 3.0.3
 info:
   title: Limenia API
-  version: 0.28.0
+  version: 0.32.0
   description: |
     Public API of Limenia for app backends (`/v1`) and the webhook events Limenia sends to apps.
-    Integration guide for developers and coding agents: https://limenia.eu/docs/integration.md
+    Developer documentation: https://limenia.eu/docs/ (all pages in one file for coding agents: https://limenia.eu/docs/integration.md)
 
     - Base URL: https://app.limenia.eu; every path starts with `/v1`.
     - Authentication: `Authorization: Bearer <API key>` (`lm_live_...` or `lm_test_...`). The key determines tenant and app.
@@ -138,7 +138,10 @@ paths:
         `GET /v1/subjects/{externalUserId}/status`: a temporary suspension
         whose `suspendUntil` has passed counts as `active` even before the
         hourly job lifts it. Never blocked by the plan or the subscription
-        state of the tenant.
+        state of the tenant. Tenants in onboarding or suspended
+        tenants reject the update like the other writes (403
+        `tenant_not_active`, API 0.32.0) and nothing is written;
+        `GET /v1/subjects/{externalUserId}/status` keeps answering.
       security:
         - apiKey: []
       requestBody:
@@ -877,7 +880,12 @@ components:
         context:
           type: object
           additionalProperties: true
-          description: Small JSON object with context (at most 4 KB), e.g. the ID of the post a comment belongs to.
+          description: |
+            Small JSON object with context, e.g. the ID of the post a comment
+            belongs to: at most 4 KB (field error `too_large`). Keys must be 1
+            to 128 bytes long and not of the form `__x__`, arrays must not
+            contain arrays, and objects and arrays nest at most 10 levels
+            (field error `invalid` at `/content/context`, API 0.32.0).
     CreateReportRequest:
       type: object
       required: [source, reasonCategory]
@@ -1414,9 +1422,10 @@ components:
           additionalProperties: true
           description: |
             Small JSON object (at most 4 KB, field error `too_large`) with IDs
-            and technical details only. Keys must not be empty or of the form
-            `__x__`, arrays must not contain arrays, and objects and arrays
-            nest at most 10 levels (field error `invalid`).
+            and technical details only. Keys must be 1 to 128 bytes long
+            (API 0.32.0) and not of the form `__x__`, arrays must not contain
+            arrays, and objects and arrays nest at most 10 levels (field error
+            `invalid`).
         identifiers:
           description: Optional HMACs of e-mail address and phone number for ban evasion across apps; never rejected (`SubjectIdentifiers`).
           allOf:

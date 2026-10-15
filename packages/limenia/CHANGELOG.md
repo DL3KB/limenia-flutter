@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-Documentation only; the API of the package is unchanged.
+Documentation and spec copy only; the API of the package is unchanged.
 
+- The spec copy is the public OpenAPI description at API version 0.32.0. `POST /v1/reports` and `POST /v1/reviews` answer 400 `validation_failed` for a `content.context` that cannot be stored (nested deeper than 20 levels, empty or reserved keys such as `__x__`, keys longer than 128 bytes) instead of 500, and `PUT /v1/subjects/{externalUserId}` answers 403 `tenant_not_active` while the tenant is in onboarding or suspended, like the other writes.
 - README: the backend sketch drops `identifiers` sent by the device for reports (`subject.identifiers`), signals and device checks, as the section "Ban evasion across apps" requires; the backend adds them from its own user record.
 
 ## 0.12.1 (2026-10-12)
