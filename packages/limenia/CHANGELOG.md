@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+Documentation only; the API of the package is unchanged.
+
+- README: the backend sketch drops `identifiers` sent by the device for reports (`subject.identifiers`), signals and device checks, as the section "Ban evasion across apps" requires; the backend adds them from its own user record.
+
 ## 0.12.1 (2026-10-12)
 
 Documentation and spec copy only; the API of the package is unchanged.

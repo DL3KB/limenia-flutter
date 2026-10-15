@@ -364,8 +364,10 @@ app.post("/moderation/reports", requireLogin, async (req, res) => {
   const body = req.body as CreateReportRequest;
   // Reporter from the login, load the snapshot from your own database where possible.
   // trustedFlaggerId only from your own records (undefined for everyone else), never from the device.
+  // identifiers never come from the device: add them from your own user record (see Ban evasion across apps).
   const report: CreateReportRequest = {
     ...body,
+    subject: body.subject && { ...body.subject, identifiers: undefined },
     reporter: { externalUserId: uid },
     trustedFlaggerId: await trustedFlaggerOf(uid),
   };
@@ -417,8 +419,9 @@ app.post("/moderation/reviews", requireLogin, async (req, res) => {
 app.post("/moderation/signals", requireLogin, async (req, res) => {
   const body = req.body as CreateSignalsRequest;
   // The user comes from the login, never from the device. Recompute values from your own data where possible.
+  // identifiers, if used, from your own user record, never from the device.
   const signals: CreateSignalsRequest = {
-    signals: body.signals.map((s) => ({ ...s, externalUserId: req.user.uid })),
+    signals: body.signals.map((s) => ({ ...s, identifiers: undefined, externalUserId: req.user.uid })),
   };
   try {
     res.status(202).json(await limenia.sendSignals(signals, { idempotencyKey: req.get("Idempotency-Key")! }));
@@ -442,7 +445,8 @@ app.post("/moderation/devices/check", requireLogin, async (req, res) => {
     return res.status(400).json({ status: 400, code: "validation_failed" });
   }
   try {
-    res.json(await limenia.checkDevice({ ...body, externalUserId: req.user.uid }));
+    // identifiers, if used, from your own user record, never from the device.
+    res.json(await limenia.checkDevice({ ...body, identifiers: undefined, externalUserId: req.user.uid }));
   } catch (err) {
     sendError(res, err);
   }
